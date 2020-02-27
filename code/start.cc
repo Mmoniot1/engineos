@@ -1,5 +1,4 @@
 //By Monica Moniot
-#include <stdio.h>
 #include "game.hh"
 #include "glew.h"
 #undef main
@@ -8,32 +7,29 @@ static double get_delta_time(uint64 t0, uint64 t1) {
 	return (t1 - t0)/cast(double, SDL_GetPerformanceFrequency());
 }
 
-static void input_add_text(Input* input, const char* text, uint32 text_size, MamStack* stack) {
-	char* new_text;
-	if(input->text) {
-		mam_stack_extend(stack, text_size);
-		new_text = &input->text[input->text_size];
-	} else {
-		new_text = mam_stack_push(char, stack, text_size);
-		input->text = new_text;
-	}
-	input->text_size += text_size;
-	memcpy(new_text, text, text_size);
-}
-static void input_pop_text(Input* input, MamStack* stack) {
-	if(input->text) {
-		mam_stack_pop(stack);
-	}
-}
-static void input_add_char(Input* input, char ch, MamStack* stack) {
-	input_add_text(input, &ch, 1, stack);
-}
+
+// static void input_add_text(Input* input, const char* text, uint32 text_size, MamStack* stack) {
+// 	char* new_text;
+// 	if(input->text) {
+// 		mam_stack_extend(stack, text_size);
+// 		new_text = &input->text[input->text_size];
+// 	} else {
+// 		new_text = mam_stack_push(char, stack, text_size);
+// 		input->text = new_text;
+// 	}
+// 	input->text_size += text_size;
+// 	memcpy(new_text, text, text_size);
+// }
+// static void input_add_char(Input* input, char ch, MamStack* stack) {
+// 	input_add_text(input, &ch, 1, stack);
+// }
 static void input_press_button(Input* input, ButtonId id, bool button_state) {
 	if(input->button_state[id] != button_state) {
 		input->button_state[id] = button_state;
 		input->button_trans[id] += 1;
 	}
 }
+
 
 static bool gl_check_(const char *file, int line) {
     auto code = glGetError();
@@ -86,7 +82,8 @@ static int32 compile_shader(char* source, GLenum type) {
 	}
 	return shader;
 }
-static int32 compile_shader_program_from_file(const char* filename0, const char* filename1, MamStack* stack) {
+static uint32 compile_shader_program_from_file(const char* filename0, const char* filename1, MamStack* stack) {
+	int32 pre_stack_size = stack->size;
 	char* shader_source = read_file_to_stack(filename0, stack);
 	uint32 vertex_shader = compile_shader(shader_source, GL_VERTEX_SHADER);
 	shader_source = read_file_to_stack(filename1, stack);
@@ -106,38 +103,37 @@ static int32 compile_shader_program_from_file(const char* filename0, const char*
 	}
 	glDeleteShader(vertex_shader);
 	glDeleteShader(fragment_shader);
-	mam_stack_pop(stack);
-	mam_stack_pop(stack);
+	mam_stack_set_size(stack, pre_stack_size);
 	return shader_program;
 }
 
-static uint32 init_font(Font* font, float psize, const char* filename, MamStack* stack) {
-	//leaves char data behind on stack
-	//TODO: Better font code
-	char first_char = 32;
-	char last_char = 126;
-	font->bitmap_w = KILOBYTE;
-	font->bitmap_h = KILOBYTE;
-	font->char_data = mam_stack_push(stbtt_bakedchar, stack, last_char - first_char + 1);
-	uint8* data = cast(uint8*, read_file_to_stack("NotoSans.ttf", stack));
-	font->pixel_size = psize;
-	byte* temp_bitmap = mam_stack_push(byte, stack, font->bitmap_w*font->bitmap_h);
-	ASSERT(stbtt_BakeFontBitmap(data, 0, psize, temp_bitmap, font->bitmap_w, font->bitmap_h, first_char, last_char - first_char + 1, font->char_data) > 0); //no guarantee this fits!
-
-	uint32 ret;
-	glGenTextures(1, &ret);
-	glBindTexture(GL_TEXTURE_2D, ret);
-	float border_color[] = {0.0f, 0.0f, 0.0f, 1.0f};
-	glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, border_color);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, font->bitmap_w, font->bitmap_h, 0, GL_ALPHA, GL_UNSIGNED_BYTE, temp_bitmap);
-
-	mam_stack_pop(stack);
-	return ret;
-}
+// static uint32 init_font(Font* font, float psize, const char* filename, MamStack* stack) {
+// 	//leaves char data behind on stack
+// 	//TODO: Better font code
+// 	char first_char = 32;
+// 	char last_char = 126;
+// 	font->bitmap_w = KILOBYTE;
+// 	font->bitmap_h = KILOBYTE;
+// 	font->char_data = mam_stack_push(stbtt_bakedchar, stack, last_char - first_char + 1);
+// 	uint8* data = cast(uint8*, read_file_to_stack("NotoSans.ttf", stack));
+// 	font->pixel_size = psize;
+// 	byte* temp_bitmap = mam_stack_push(byte, stack, font->bitmap_w*font->bitmap_h);
+// 	ASSERT(stbtt_BakeFontBitmap(data, 0, psize, temp_bitmap, font->bitmap_w, font->bitmap_h, first_char, last_char - first_char + 1, font->char_data) > 0); //no guarantee this fits!
+//
+// 	uint32 ret;
+// 	glGenTextures(1, &ret);
+// 	glBindTexture(GL_TEXTURE_2D, ret);
+// 	float border_color[] = {0.0f, 0.0f, 0.0f, 1.0f};
+// 	glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, border_color);
+// 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+// 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+// 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+// 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+// 	glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, font->bitmap_w, font->bitmap_h, 0, GL_ALPHA, GL_UNSIGNED_BYTE, temp_bitmap);
+//
+// 	mam_stack_pop(stack);
+// 	return ret;
+// }
 
 int main(int argc, char** argv) {
 	if(SDL_Init(SDL_INIT_EVERYTHING) < 0) {
@@ -147,7 +143,7 @@ int main(int argc, char** argv) {
 	}
 
 
-	vec2 screen_dim = gb_vec2(1200, 800);
+ 	auto screen_dim = gb_vec2(1200, 800);
 
 	auto window_options = SDL_WINDOW_SHOWN|SDL_WINDOW_OPENGL|SDL_WINDOW_RESIZABLE;
 	SDL_Window* window = SDL_CreateWindow("EngineOS", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, screen_dim.w, screen_dim.h, window_options);
@@ -185,83 +181,65 @@ int main(int argc, char** argv) {
 	}
 	double sleep_resolution = 0.0008;
 
-	uint32 game_size  = 32*MEGABYTE;
-	uint32 plat_size  = 32*MEGABYTE;
-	uint32 trans_size = 32*MEGABYTE;
-	//TODO: check for failure
-	byte* game_memory  = cast(byte*, malloc(game_size));
-	byte* plat_memory  = cast(byte*, malloc(plat_size));
-	byte* trans_memory = cast(byte*, malloc(trans_size));
 
-	auto startup_stack = mam_stack_init(malloc(2*MEGABYTE), 2*MEGABYTE);
+	GameState game_state = {};
+
+	MamStack* trans_stack = mam_stack_init(malloc(300*MEGABYTE), 300*MEGABYTE);
 
 	Input input = {};
-	input.screen = screen_dim;
 
 	Output output = {};
+	input.screen = screen_dim;
+
 
 	GLData gl_data; {//init gl
 		glClearColor(1.0, 1.0, 0, 0);
 		glViewport(0, 0, screen_dim.w, screen_dim.h);
 		glEnable(GL_BLEND);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-		gl_data.gui_shader = compile_shader_program_from_file("gui_vertex.glsl", "gui_fragment.glsl", startup_stack);//--<--
-		gl_data.world_graphics_shader = compile_shader_program_from_file("graphics_vertex.glsl", "graphics_fragment.glsl", startup_stack);
-		gl_data.world_graphics_trans_handle = glGetUniformLocation(gl_data.world_graphics_shader, "projection");
-		gl_data.gui_trans_handle = glGetUniformLocation(gl_data.gui_shader, "projection");
+		gl_data.vbuffer_shader = compile_shader_program_from_file("graphics_vertex.glsl", "graphics_fragment.glsl", trans_stack);
+		gl_data.vbuffer_trans_handle = glGetUniformLocation(gl_data.vbuffer_shader, "projection");
 		{//init world buffer
-			output.world_graphics.capacity = MEGABYTE;
-			glGenBuffers(1, &gl_data.world_graphics_handle);
-			glGenVertexArrays(1, &gl_data.world_graphics_attributes);
-			glBindVertexArray(gl_data.world_graphics_attributes);
-			glBindBuffer(GL_ARRAY_BUFFER, gl_data.world_graphics_handle);
-			glBufferData(GL_ARRAY_BUFFER, output.world_graphics.capacity, 0, GL_DYNAMIC_DRAW);
+			output.vbuffer.capacity = 32*MEGABYTE;
+			glGenBuffers(1, &gl_data.vbuffer_handle);
+			glGenVertexArrays(1, &gl_data.vbuffer_attributes);
+			glBindVertexArray(gl_data.vbuffer_attributes);
+			glBindBuffer(GL_ARRAY_BUFFER, gl_data.vbuffer_handle);
+			glBufferData(GL_ARRAY_BUFFER, output.vbuffer.capacity, 0, GL_DYNAMIC_DRAW);
+			gl_check();
 			glEnableVertexAttribArray(0);
-			glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 8*sizeof(float), cast(void*, 0));
+			glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, FLOATS_PER_VBUFFER_VERTEX*sizeof(float), cast(void*, 0));
 			glEnableVertexAttribArray(1);
-			glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 8*sizeof(float), cast(void*, 2*sizeof(float)));
+			glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, FLOATS_PER_VBUFFER_VERTEX*sizeof(float), cast(void*, 2*sizeof(float)));
 			glEnableVertexAttribArray(2);
-			glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8*sizeof(float), cast(void*, 6*sizeof(float)));
+			glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, FLOATS_PER_VBUFFER_VERTEX*sizeof(float), cast(void*, 4*sizeof(float)));
+			gl_check();
 		}
-		{//init gui buffer
-			output.gui.capacity = MEGABYTE;
-			glGenBuffers(1, &gl_data.gui_handle);
-			glGenVertexArrays(1, &gl_data.gui_attributes);
-			glBindVertexArray(gl_data.gui_attributes);
-			glBindBuffer(GL_ARRAY_BUFFER, gl_data.gui_handle);
-			glBufferData(GL_ARRAY_BUFFER, output.gui.capacity, 0, GL_DYNAMIC_DRAW);
-			glEnableVertexAttribArray(0);
-			glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 8*sizeof(float), cast(void*, 0));
-			glEnableVertexAttribArray(1);
-			glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 8*sizeof(float), cast(void*, 2*sizeof(float)));
-			glEnableVertexAttribArray(2);
-			glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8*sizeof(float), cast(void*, 6*sizeof(float)));
-		}
+		glGenTextures(1, &gl_data.texture);
  		{//init text texture
-			gl_data.mono_texture = init_font(&output.sans, 24, "NotoSans.ttf", startup_stack);
+			// gl_data.mono_texture = init_font(&output.sans, 24, "NotoSans.ttf", trans_stack);
 		}
 	}
 
-	*cast(uint32*, game_memory)  = game_size;
-	*cast(uint32*, plat_memory)  = plat_size;
-	*cast(uint32*, trans_memory) = trans_size;
-	init_game(game_memory, plat_memory, &input);
+	init_game(&game_state, trans_stack, &input);
 
 	uint64 start_of_frame = SDL_GetPerformanceCounter();
 	uint64 start_of_compute = start_of_frame;
 	bool is_game_running = 1;
 	char* text_input = 0;
+
+	int64 debug_ticks = 0;
 	while(true) {
 		uint64 new_start = SDL_GetPerformanceCounter();
 		double frame_duration = get_delta_time(start_of_compute, new_start);
 		start_of_compute = new_start;
 		//process events
-		input.text = 0;
-		input.text_size = 0;
+		// input.text = 0;
+		// input.text_size = 0;
 		input.did_mouse_move = 0;
 		// input.did_screen_resize = 0;
-		input.pre_screen = ORIGIN;
-		memzero(&input.button_trans, sizeof(input.button_trans));
+		input.pre_screen = GBORIGIN;
+		memzero(&input.button_trans, 1);
 
 		SDL_Event event;
 		while(SDL_PollEvent(&event)) {
@@ -269,10 +247,10 @@ int main(int argc, char** argv) {
 				is_game_running = 0;
 				break;
 			} else if(event.type == SDL_TEXTINPUT) {
-				uint32 text_size = strlen(event.text.text);
-				if(text_size > 0) {
-					input_add_text(&input, event.text.text, text_size, startup_stack);
-				}
+				// uint32 text_size = strlen(event.text.text);
+				// if(text_size > 0) {
+				// 	input_add_text(&input, event.text.text, text_size, startup_stack);
+				// }
 			} else if(event.type == SDL_TEXTEDITING) {
 				// printf("e:%d, %d, %s\n", event.edit.start, event.edit.length, event.edit.text);
 			} else if(event.type == SDL_MOUSEMOTION) {
@@ -308,24 +286,24 @@ int main(int argc, char** argv) {
 					if(keycode == SDLK_ESCAPE) {
 						is_game_running = 0;
 						break;
-					} else if(keycode == SDLK_BACKSPACE) {
-						input_add_char(&input, CHAR_BACKSPACE, startup_stack);
-					} else if(keycode == SDLK_DELETE) {
-						input_add_char(&input, CHAR_DELETE, startup_stack);
-					} else if(keycode == SDLK_TAB) {
-						input_add_char(&input, CHAR_TAB, startup_stack);
-					} else if(keycode == SDLK_RETURN) {
-						//NOTE: there's a SDLK_RETURN2??
-						input_add_char(&input, CHAR_RETURN, startup_stack);
-					} else if(keycode == SDLK_DOWN) {
-						input_add_char(&input, CHAR_DOWN, startup_stack);
-					} else if(keycode == SDLK_UP) {
-						input_add_char(&input, CHAR_UP, startup_stack);
-					} else if(keycode == SDLK_RIGHT) {
-						input_add_char(&input, CHAR_RIGHT, startup_stack);
-					} else if(keycode == SDLK_LEFT) {
-						//NOTE: there's a SDLK_RETURN2??
-						input_add_char(&input, CHAR_LEFT, startup_stack);
+					// } else if(keycode == SDLK_BACKSPACE) {
+					// 	input_add_char(&input, CHAR_BACKSPACE, startup_stack);
+					// } else if(keycode == SDLK_DELETE) {
+					// 	input_add_char(&input, CHAR_DELETE, startup_stack);
+					// } else if(keycode == SDLK_TAB) {
+					// 	input_add_char(&input, CHAR_TAB, startup_stack);
+					// } else if(keycode == SDLK_RETURN) {
+					// 	//NOTE: there's a SDLK_RETURN2??
+					// 	input_add_char(&input, CHAR_RETURN, startup_stack);
+					// } else if(keycode == SDLK_DOWN) {
+					// 	input_add_char(&input, CHAR_DOWN, startup_stack);
+					// } else if(keycode == SDLK_UP) {
+					// 	input_add_char(&input, CHAR_UP, startup_stack);
+					// } else if(keycode == SDLK_RIGHT) {
+					// 	input_add_char(&input, CHAR_RIGHT, startup_stack);
+					// } else if(keycode == SDLK_LEFT) {
+					// 	//NOTE: there's a SDLK_RETURN2??
+					// 	input_add_char(&input, CHAR_LEFT, startup_stack);
 					} else {
 						flag = 1;
 					}
@@ -333,44 +311,38 @@ int main(int argc, char** argv) {
 					flag = 1;
 				}
 				if(flag) {
-					if(keycode == SDLK_0) {
-						if(!is_repeat) {
+					if(!is_repeat) {
+						if(keycode == SDLK_LEFT) {
+							input_press_button(&input, BUTTON_LEFT, state);
+						} else if(keycode == SDLK_RIGHT) {
+							input_press_button(&input, BUTTON_RIGHT, state);
+						} else if(keycode == SDLK_UP) {
+							input_press_button(&input, BUTTON_UP, state);
+						} else if(keycode == SDLK_DOWN) {
+							input_press_button(&input, BUTTON_DOWN, state);
+						} else if(keycode == SDLK_LSHIFT) {
+							input_press_button(&input, BUTTON_LEFT_SHIFT, state);
+						} else if(keycode == SDLK_LCTRL) {
+							input_press_button(&input, BUTTON_LEFT_CTRL, state);
+						} else if(keycode == SDLK_0) {
 							input_press_button(&input, BUTTON_0, state);
-						}
-					} else if(keycode == SDLK_1) {
-						if(!is_repeat) {
+						} else if(keycode == SDLK_1) {
 							input_press_button(&input, BUTTON_1, state);
-						}
-					} else if(keycode == SDLK_2) {
-						if(!is_repeat) {
+						} else if(keycode == SDLK_2) {
 							input_press_button(&input, BUTTON_2, state);
-						}
-					} else if(keycode == SDLK_3) {
-						if(!is_repeat) {
+						} else if(keycode == SDLK_3) {
 							input_press_button(&input, BUTTON_3, state);
-						}
-					} else if(keycode == SDLK_4) {
-						if(!is_repeat) {
+						} else if(keycode == SDLK_4) {
 							input_press_button(&input, BUTTON_4, state);
-						}
-					} else if(keycode == SDLK_5) {
-						if(!is_repeat) {
+						} else if(keycode == SDLK_5) {
 							input_press_button(&input, BUTTON_5, state);
-						}
-					} else if(keycode == SDLK_6) {
-						if(!is_repeat) {
+						} else if(keycode == SDLK_6) {
 							input_press_button(&input, BUTTON_6, state);
-						}
-					} else if(keycode == SDLK_7) {
-						if(!is_repeat) {
+						} else if(keycode == SDLK_7) {
 							input_press_button(&input, BUTTON_7, state);
-						}
-					} else if(keycode == SDLK_8) {
-						if(!is_repeat) {
+						} else if(keycode == SDLK_8) {
 							input_press_button(&input, BUTTON_8, state);
-						}
-					} else if(keycode == SDLK_9) {
-						if(!is_repeat) {
+						} else if(keycode == SDLK_9) {
 							input_press_button(&input, BUTTON_9, state);
 						}
 					}
@@ -378,7 +350,7 @@ int main(int argc, char** argv) {
 			} else if (event.type == SDL_WINDOWEVENT) {
 				auto window_id = event.window.event;
 				if(window_id == SDL_WINDOWEVENT_SIZE_CHANGED) {
-					if(input.pre_screen == ORIGIN) {
+					if(input.pre_screen == GBORIGIN) {
 						input.pre_screen = input.screen;
 					}
 					input.screen = gb_vec2(event.window.data1, event.window.data2);
@@ -399,45 +371,46 @@ int main(int argc, char** argv) {
 		if(!is_game_running) break;
 
 		{//prepare vertex buffers
-			glBindBuffer(GL_ARRAY_BUFFER, gl_data.world_graphics_handle);
-			output.world_graphics.buffer = cast(float*, glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY));
-			output.world_graphics.size = 0;
-			glBindBuffer(GL_ARRAY_BUFFER, gl_data.gui_handle);
-			output.gui.buffer = cast(float*, glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY));
-			output.gui.size = 0;
+			glBindBuffer(GL_ARRAY_BUFFER, gl_data.vbuffer_handle);
+			output.vbuffer.buffer = cast(float*, glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY));
+			output.vbuffer.size = 0;
 		}
 		//run game
-		update_game(game_memory, plat_memory, trans_memory, frame_duration, &input, &output);
+		update_game(&game_state, trans_stack, frame_duration, &input, &output);
 		// input_pop_text(&input, startup_stack);
 
 		{//draw vertex buffer
 			// printf("size: %d\n", output.world_graphics.size);
 			glClear(GL_COLOR_BUFFER_BIT);
 
-			glBindBuffer(GL_ARRAY_BUFFER, gl_data.world_graphics_handle);
-			glUnmapBuffer(GL_ARRAY_BUFFER);//could fail??
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, gl_data.texture);
 			gl_check();
-			glUseProgram(gl_data.world_graphics_shader);
-			glUniformMatrix3fv(gl_data.world_graphics_trans_handle, 1, GL_TRUE, cast(float*, &output.world_graphics.trans));
-			glBindVertexArray(gl_data.world_graphics_attributes);
-			glDrawArrays(GL_TRIANGLES, 0, output.world_graphics.size/FLOATS_PER_WORLD_VERTEX);
+			float border_color[] = {1.0f, 1.0f, 1.0f, 1.0f};
+			glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, border_color);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, output.next_texture.x, output.next_texture.y, 0, GL_RGBA, GL_FLOAT, output.next_texture.buffer);
 			gl_check();
 
-			glBindBuffer(GL_ARRAY_BUFFER, gl_data.gui_handle);
+			glBindBuffer(GL_ARRAY_BUFFER, gl_data.vbuffer_handle);
 			glUnmapBuffer(GL_ARRAY_BUFFER);//could fail??
 			gl_check();
-			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, gl_data.mono_texture);
-			gl_check();
-			glUseProgram(gl_data.gui_shader);
-			glUniformMatrix3fv(gl_data.gui_trans_handle, 1, GL_TRUE, cast(float*, &output.gui.trans));
-			glBindVertexArray(gl_data.gui_attributes);
-			glDrawArrays(GL_TRIANGLES, 0, output.gui.size/FLOATS_PER_GUI_VERTEX);
+			glUseProgram(gl_data.vbuffer_shader);
+			glUniformMatrix3fv(gl_data.vbuffer_trans_handle, 1, GL_TRUE, cast(float*, &output.vbuffer.trans));
+			glBindVertexArray(gl_data.vbuffer_attributes);
+			glDrawArrays(GL_TRIANGLES, 0, output.vbuffer.size/FLOATS_PER_VBUFFER_VERTEX);
 			gl_check();
 		}
 		{//control framerate
+			debug_ticks += 1;
 			uint64 end_of_compute = SDL_GetPerformanceCounter();
 			double time_to_compute = get_delta_time(start_of_frame, end_of_compute);
+			if(debug_ticks%128 == 0) {
+				printf("compute time: %2.5fms\n", time_to_compute*1000.0);
+			}
 			if(time_to_compute < time_per_frame) {
 				double time_to_wait = time_per_frame - time_to_compute;
 				if(time_to_wait > sleep_resolution) {
@@ -445,14 +418,14 @@ int main(int argc, char** argv) {
 				}
 				uint64 end_of_frame = SDL_GetPerformanceCounter();
 				//TODO: make get_delta faster?
-				int64 ticks_per_frame = mam_round_to_int64(time_per_frame*SDL_GetPerformanceFrequency());
+				int64 ticks_per_frame = cast(int64, gb_round(time_per_frame*SDL_GetPerformanceFrequency()));
 				while((end_of_frame - start_of_frame) < ticks_per_frame) {
 					end_of_frame = SDL_GetPerformanceCounter();
 				}
 				start_of_frame += ticks_per_frame;
 			} else {
 				//TODO: framerate manipulation
-				// printf("frame took longer than expected: %2.3f\n", time_to_compute);
+				printf("frame took longer than expected: %2.3f\n", time_to_compute);
 				start_of_frame = end_of_compute;
 			}
 			// printf("%2.3f\n", time_to_compute);
@@ -461,8 +434,7 @@ int main(int argc, char** argv) {
 		SDL_GL_SwapWindow(window);
 
 		// #ifdef DEBUG
-		memzero(trans_memory, trans_size);//only for debugging, prevents transient data from being using between frames
-		*cast(uint32*, trans_memory) = trans_size;
+			mam_stack_set_size(trans_stack, 0);
 		// #endif
 	}
 

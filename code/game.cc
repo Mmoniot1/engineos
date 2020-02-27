@@ -1,14 +1,24 @@
 //By Monica Moniot
-#define GB_MATH_IMPLEMENTATION
-#define WORLD_IMPLEMENTATION
-#define MACHINES_IMPLEMENTATION
-#define STB_TRUETYPE_IMPLEMENTATION
+// #define STB_TRUETYPE_IMPLEMENTATION
 #define PCG_IMPLEMENTATION
-#define MAM_ALLOC_IMPLEMENTATION
-#define RENDER_IMPLEMENTATION
+#include "pcg.h"
+#define MAMLIB_IMPLEMENTATION
+#include "mamlib.h"
+#define GB_MATH_IMPLEMENTATION
+#include "gb_math.h"
 #include "game.hh"
-#include "machines.hh"
-#include "render.hh"
+#define STB_DIVIDE_IMPLEMENTATION
+#include "stb_divide.h"
+#define STB_PERLIN_IMPLEMENTATION
+#include "stb_perlin.h"
+
+
+inline gbVec2 gb_vec2_addx(gbVec2 v, float x) {
+	return gb_vec2(v.x + x, v.y);
+}
+inline gbVec2 gb_vec2_addy(gbVec2 v, float x) {
+	return gb_vec2(v.x, v.y + x);
+}
 
 
 inline bool just_down(const Input* input, uint32 button) {
@@ -17,272 +27,181 @@ inline bool just_down(const Input* input, uint32 button) {
 inline bool just_up  (const Input* input, uint32 button) {
 	return ((input->button_trans[button] == 1) && !(input->button_state[button])) || (input->button_trans[button] > 1);
 }
-
-
-
-void init_platform(const byte* game_memory, byte* plat_memory, const Input* input) {
-	auto game = cast(GameState*, game_memory);
-	auto game_stack = cast(MamStack*, game_memory + sizeof(GameState));
-	auto platform = cast(Platform*, plat_memory);
-	auto platform_stack = &platform->stack;
-
-	memzero(platform, sizeof(Platform));
-	mam_stack_init(platform_stack, platform->mem_capacity - sizeof(Platform));
-	platform->ave_frame_time = 0.0;
+inline bool is_down(const Input* input, uint32 button) {
+	return input->button_state[button];
 }
-
-void update_platform(GameState* game, Platform* platform, MamStack* trans_stack, double dt, const Input* input, Output* output) {
-	auto game_stack = &game->stack;
-	auto platform_stack = &platform->stack;
-
-	auto user = &game->user;
-	auto screen = input->screen;
-	auto world = &game->world;
-	auto game_heap = mam_get_ptr(MamHeap, game_stack, game->heap);
-
-	Font* debug_font = &output->sans;
-	auto gui = &output->gui;
-	auto graphics = &output->world_graphics;
-
-	const double ave_weight = 1.0/32.0;
-	platform->ave_frame_time = (1 - ave_weight)*platform->ave_frame_time + ave_weight*dt;
-
-	output->gui.trans = get_gl_from_screen_trans(screen);
-	output->world_graphics.trans = get_gl_from_world_trans(user->pixels_per_tile, user->world_pos, screen);
-	const char* selected_machine_str = "None";
-	{//draw placement tiles
-		TileCoord bottom_left = get_coord_from_screenu(user, screen, ORIGIN);
-		TileCoord top_right = get_coord_from_screenu(user, screen, screen);
-		draw_box(graphics, gb_vec2(bottom_left.x - .5, bottom_left.y - .5), gb_vec2(top_right.x + .5, top_right.y + .5), COLOR_PURPLE);
-
-		for_each_in_range(y, bottom_left.y, top_right.y) {
-			for_each_in_range(x, bottom_left.x, top_right.x) {
-				auto coord = to_coord(x, y);
-				auto tile = world_get_tile(game, coord);
-				if(tile.id == TILE_EMPTY) {
-					draw_tile(graphics, coord, COLOR_BLACK_TRANS);
-				} else if(tile.id == TILE_INVALID) {
-					draw_tile(graphics, coord, COLOR_RED);
-				} else if(tile.id == TILE_IRON_ORE) {
-					draw_tile(graphics, coord, COLOR_WHITE_TRANS);
-				} else if(tile.id == TILE_COPPER_ORE) {
-					draw_tile(graphics, coord, COLOR_ORANGE_TRANS);
-				} else {
-					assert(0);
-				}
-			}
-		}
-		for_each_in_range(y, bottom_left.y, top_right.y) {
-			for_each_in_range(x, bottom_left.x, top_right.x) {
-				auto coord = to_coord(x, y);
-				auto machine_tile = world_get_machine(game, coord);
-				if(machine_tile.id != MACHINE_EMPTY) {
-					draw_machine(game, mam_get_ptr(Machine, game_stack, machine_tile.data), coord, machine_tile.id, output);
-				}
-			}
-		}
-		TileCoord tile_coord = get_coord_from_screenu(user, screen, input->mouse_pos);
-		Tile cur_machine = world_get_machine(game, tile_coord);
-		Tile machine = {user->selected_machine, 0};
-		bool flag = can_build_machine(game, tile_coord, user->selected_machine);
-		if(cur_machine.id == MACHINE_EMPTY) {
-			if(machine.id != MACHINE_EMPTY) {
-				draw_ghost_machine(game, tile_coord, machine.id, output);
-			}
-		}
-	}
-
-	auto reso_vec = game->reso_vec;
-	// print_string(gui, debug_font, gb_vec2(50, 50), from_cstr("hello world"));
-	float buff = 16.0;
-	char* str;
-	uint str_size;
-	float spacing = 20.0;
-	str = get_sci_from_n(1000*platform->ave_frame_time, 2, &str_size, trans_stack);
-	print_string(gui, debug_font, gb_vec2(3, screen.y - buff), from_cstr("frame:"));
-	print_string(gui, debug_font, gb_vec2(100, screen.y - buff), str, str_size);
-	buff += spacing;
-
-	str = get_string_from_resource(reso_vec[COPPER_ORE], &str_size, trans_stack);
-	print_string(gui, debug_font, gb_vec2(3, screen.y - buff), from_cstr("copper ore:"));
-	print_string(gui, debug_font, gb_vec2(100, screen.y - buff), str, str_size);
-	buff += spacing;
-	str = get_string_from_resource(reso_vec[COPPER], &str_size, trans_stack);
-	print_string(gui, debug_font, gb_vec2(3, screen.y - buff), from_cstr("copper:"));
-	print_string(gui, debug_font, gb_vec2(100, screen.y - buff), str, str_size);
-	buff += spacing;
-	str = get_string_from_resource(reso_vec[IRON_ORE], &str_size, trans_stack);
-	print_string(gui, debug_font, gb_vec2(3, screen.y - buff), from_cstr("iron ore:"));
-	print_string(gui, debug_font, gb_vec2(100, screen.y - buff), str, str_size);
-	buff += spacing;
-	str = get_string_from_resource(reso_vec[IRON], &str_size, trans_stack);
-	print_string(gui, debug_font, gb_vec2(3, screen.y - buff), from_cstr("iron:"));
-	print_string(gui, debug_font, gb_vec2(100, screen.y - buff), str, str_size);
-	buff += spacing;
-	str = get_string_from_resource(reso_vec[CIRCUITRY], &str_size, trans_stack);
-	print_string(gui, debug_font, gb_vec2(3, screen.y - buff), from_cstr("circuitry:"));
-	print_string(gui, debug_font, gb_vec2(100, screen.y - buff), str, str_size);
-	buff += spacing;
-	print_string(gui, debug_font, gb_vec2(3, screen.y - buff), from_cstr(selected_machine_str));
-	/*
-	if(user->cmd_text_size > 0) {
-		render_text_with_cursor(context, &platform->cmd_font, mam_get_ptr(char, game_heap, user->cmd_text), user->cmd_text_size, user->text_cursor_pos, screen/2, trans_stack);
-	} else {
-	// render_text(, &platform->cmd_font, from_cstr("Hello Sailor, how are you"), screen/2, trans_stack);
-	}
-	// render_text(context, &platform->cmd_font, from_cstr("Hello world"), screen/3, trans_stack);
-*/
-}
-
-void init_game(byte* game_memory, byte* plat_memory, const Input* input) {
-	init_func_tables();
-
-	GameState* game = cast(GameState*, game_memory);
-	MamStack* game_stack = &game->stack;;
-
-	UserData* user = &game->user;
-	auto world = &game->world;
-
-	memzero(game, sizeof(GameState));
-	mam_stack_init(game_stack, game->mem_capacity - sizeof(GameState));
-	pcg_seed(&game->rng, 12);
-	game->heap = mam_stack_pushi(game_stack, GAME_GENMEM_CAPACITY);
-	auto game_heap = mam_get_ptr(MamHeap, game_stack, game->heap);
-	mam_heap_init(game_heap, GAME_GENMEM_CAPACITY);
-
-	world_init(game);
-
-	auto reso_vec = game->reso_vec;
-	memzero(reso_vec, sizeof(double)*RESOS_TOTAL);
-	reso_vec[COPPER] += 1000.0;
-	reso_vec[IRON] += 1000.0;
-
-	memzero(game->built_machines, sizeof(game->built_machines));
-
-	user->cmd_text_capacity = KILOBYTE;
-	user->cmd_text_size = 0;
-	user->cmd_text = mam_heap_alloci(game_heap, user->cmd_text_capacity);
-	user->text_cursor_pos = 0;
-	user->world_pos = gb_vec2(0.0, 0.0);
-	user->pixels_per_tile = 32.0;
-	user->selected_machine = MACHINE_EMPTY;
-
-	init_platform(game_memory, plat_memory, input);
+inline bool is_up  (const Input* input, uint32 button) {
+	return !input->button_state[button];
 }
 
 
-void update_game(byte* game_memory, byte* plat_memory, byte* trans_memory, float dt, const Input* input, Output* output) {
-	auto game = cast(GameState*, game_memory);
-	auto game_stack = &game->stack;
-	auto platform = cast(Platform*, plat_memory);
-	auto platform_stack = &platform->stack;
-	auto trans_stack = cast(MamStack*, trans_memory);
-	mam_stack_init(trans_stack, *cast(uint32*, trans_memory));
+static void push_vertex(VBuffer* vbuffer, gbVec2 pos, gbVec4 color = COLOR_WHITE, gbVec2 texture = -GBDIAG) {
+	ASSERT(vbuffer->size + FLOATS_PER_VBUFFER_VERTEX <= vbuffer->capacity);
+	*cast(gbVec2*, vbuffer->buffer + vbuffer->size) = pos;
+	*cast(gbVec2*, vbuffer->buffer + vbuffer->size + 2) = texture;
+	*cast(gbVec4*, vbuffer->buffer + vbuffer->size + 4) = color;
+	vbuffer->size += FLOATS_PER_VBUFFER_VERTEX;
+}
+static void push_triangle(VBuffer* vbuffer, gbVec2 pos0, gbVec2 pos1, gbVec2 pos2, gbVec4 color = COLOR_WHITE, gbVec2 texture0 = -GBDIAG, gbVec2 texture1 = -GBDIAG, gbVec2 texture2 = -GBDIAG) {
+	push_vertex(vbuffer, pos0, color, texture0);
+	push_vertex(vbuffer, pos1, color, texture1);
+	push_vertex(vbuffer, pos2, color, texture2);
+}
+static void push_rect(VBuffer* vbuffer, gbRect2 rect, gbVec4 color = COLOR_WHITE, gbRect2 texture = gb_rect2(-GBDIAG, GBORIGIN)) {
+	gbVec2 a = rect.pos;
+	gbVec2 b = gb_vec2_addx(rect.pos, rect.dim.x);
+	gbVec2 c = gb_vec2_addy(rect.pos, rect.dim.y);
+	gbVec2 d = rect.pos + rect.dim;
+	gbVec2 t_a = texture.pos;
+	gbVec2 t_b = gb_vec2_addx(texture.pos, texture.dim.x);
+	gbVec2 t_c = gb_vec2_addy(texture.pos, texture.dim.y);
+	gbVec2 t_d = texture.pos + texture.dim;
+	push_triangle(vbuffer, a, b, c, color, t_a, t_b, t_c);
+	push_triangle(vbuffer, b, c, d, color, t_b, t_c, t_d);
+}
 
-	auto user = &game->user;
-	auto screen = input->screen;
-	auto world = &game->world;
-	auto game_heap = mam_get_ptr(MamHeap, game_stack, game->heap);
 
-	for_each_in_range(button, BUTTON_0, BUTTON_9) {
-		if(just_down(input, button)) {
-			if(button == BUTTON_0) {
-				// user->selected_machine = MACHINE_STRUCTURE;
-			} else if(button == BUTTON_1) {
-				user->selected_machine = user->selected_machine == MACHINE_MINER ? 0 : MACHINE_MINER;
-			} else if(button == BUTTON_2) {
-				user->selected_machine = user->selected_machine == MACHINE_SMELTER ? 0 : MACHINE_SMELTER;
-			} else if(button == BUTTON_3) {
-				user->selected_machine = user->selected_machine == MACHINE_FACTORY ? 0 : MACHINE_FACTORY;
-			// } else if(button == BUTTON_4) {
-			// 	user->selected_machine = MACHINE_COMPUTER;
+void render_tilemap(VBuffer* vbuffer, TileMap* tilemap) {
+	for_each_lt(tile_y, TILEMAP_DIM) {
+		for_each_lt(tile_x, TILEMAP_DIM) {
+			auto tile = tilemap->tiles[TILEMAP_DIM*tile_y + tile_x];
+			gbVec4 color = COLOR_RED;
+			if(tile == 0) {
+				color = COLOR_GREEN;
+			} else if(tile == 1) {
+				color = COLOR_PURPLE;
+			} else if(tile == 2) {
+				color = COLOR_ORANGE;
 			}
+			auto tile_pos = gb_vec2(TILEMAP_DIM*tilemap_x + tile_x, TILEMAP_DIM*tilemap_y + tile_y);
+			push_rect(vbuffer, gb_rect2(game_state->pixels_per_tile*(tile_pos - offset), game_state->pixels_per_tile*GBDIAG), color);
 		}
 	}
+}
 
+
+void update_game(GameState* game_state, MamStack* trans_stack, float dt, Input* input, Output* output) {
+	auto user = &game_state->user;
+
+	user->view = input->screen/game_state->pixels_per_tile;
+
+	{//framerate printout
+		game_state->debug_ticks += 1;
+		// game_state->ave_frame_time = .75*game_state->ave_frame_time + .25*dt;
+		// if(game_state->debug_ticks%(200) == 0) {
+		// 	printf("frame_rate: %fms\n", game_state->ave_frame_time*1000);
+		// }
+	}
+
+	if(just_down(input, BUTTON_LEFT_SHIFT)) {
+		user->speed *= 2;
+	} else if(just_up(input, BUTTON_LEFT_SHIFT)) {
+		user->speed /= 2;
+	}
+
+	if(is_down(input, BUTTON_LEFT)) {
+		user->pos.x -= user->speed*dt;
+	} else if(is_down(input, BUTTON_RIGHT)) {
+		user->pos.x += user->speed*dt;
+	}
+	if(is_down(input, BUTTON_UP)) {
+		user->pos.y += user->speed*dt;
+	} else if(is_down(input, BUTTON_DOWN)) {
+		user->pos.y -= user->speed*dt;
+	}
+
+	gbMat3 vertex_trans = {
+		2.0/input->screen.x, 0, -1.0,
+		0, 2.0/input->screen.y, -1.0,
+		0, 0, 0
+	};
+	output->vbuffer.trans = vertex_trans;
+
+	Texture* out_texture = &output->next_texture;
 	{
-		TileCoord bottom_left = get_coord_from_screenu(user, screen, ORIGIN);
-		TileCoord top_right = get_coord_from_screenu(user, screen, screen);
-		generate_world_in_range(game, bottom_left, top_right);
-	}
+		gbVec2 offset = user->pos - user->view/2;
+		gbVec2 bot_corner = user->pos - user->view/2;
+		gbVec2 top_corner = bot_corner + user->view;
+		bot_corner /= TILEMAP_DIM;
+		top_corner /= TILEMAP_DIM;
+		bot_corner = gb_vec2(gb_floor(bot_corner.x), gb_floor(bot_corner.y));
+		top_corner = gb_vec2(gb_floor(top_corner.x), gb_floor(top_corner.y));
+		for_each_in_range(tilemap_y, cast(int32, bot_corner.y), cast(int32, top_corner.y)) {
+			for_each_in_range(tilemap_x, cast(int32, bot_corner.x), cast(int32, top_corner.x)) {
 
-	if(just_down(input, BUTTON_M1)) {
-		if(user->selected_machine) {
-			TileCoord tile_coord = get_coord_from_screenu(user, screen, input->mouse_pos);
-			if(can_build_machine(game, tile_coord, user->selected_machine)) {
-				build_machine(game, tile_coord, user->selected_machine);
-			}
-		} else {
-			vec2 pos = get_world_from_screenu(user, screen, input->mouse_pos);
-			//figure out if player clicked on a port
-			bool port_is_in;
-			MachinePort port = get_machine_port_at(game, pos, &port_is_in);
-			if(port.machine_data) {
-				if(user->port.machine_data && connect_machine_ports(game, user->port, user->port_is_in, port, port_is_in)) {
-					user->port = {0, 0};
-					user->port_is_in = 0;
-				} else {
-					user->port = port;
-					user->port_is_in = port_is_in;
-				}
+				auto tilemap = &game_state->world[game_state->world_dim*stb_mod_floor(tilemap_y, game_state->world_dim) + stb_mod_floor(tilemap_x, game_state->world_dim)];
+				render_tilemap()
+
 			}
 		}
 	}
 
-	game->time_since_last_tick += dt;
-	while(game->time_since_last_tick > machine_tick_time) {
-		game->time_since_last_tick -= machine_tick_time;
-		process_all_machines(game);
-	}
+	game_state->total_time += dt;
+	return;
+}
 
-	/*
-	if(input->text) {
-		if(user->cmd_text_size + input->text_size > user->cmd_text_capacity) {
-			user->cmd_text_capacity *= 2;
-			user->cmd_text = heap_realloc_rel(game_heap, user->cmd_text, user->cmd_text_capacity);
-		}
-		auto text_buffer = mam_ptr_get(char, game_heap, user->cmd_text);
-		auto input_text = input->text;
-		for_each_lt(i, input->text_size) {
-			char ch = input_text[i];
-			if(ch == CHAR_RIGHT) {
-				if(user->text_cursor_pos < user->cmd_text_size) {
-					user->text_cursor_pos += 1;
-				}
-			} else if(ch == CHAR_LEFT) {
-				if(user->text_cursor_pos > 0) {
-					user->text_cursor_pos -= 1;
-				}
-			} else if(ch == CHAR_UP) {
-			} else if(ch == CHAR_DOWN) {
-			} else if(ch == CHAR_BACKSPACE) {
-				if(user->text_cursor_pos > 0) {
-					for_each_in_range(j, user->text_cursor_pos, user->cmd_text_size - 1) {
-						text_buffer[j - 1] = text_buffer[j];
+
+void init_game(GameState* game_state, MamStack* trans_stack, Input* input) {
+	UserData* user = &game_state->user;
+
+	memzero(game_state, 1);
+	pcg_seed(&game_state->rng, 12);
+	user->speed = 20;
+
+	game_state->pixels_per_tile = 32;
+	game_state->world_dim = WORLD_DIM;
+
+	// {//noise test
+	// 	out_texture->x = input->screen.x/2;
+	// 	out_texture->y = input->screen.y/2;
+	// 	out_texture->buffer = (gbVec4*)realloc(out_texture->buffer, sizeof(gbVec4)*out_texture->x*out_texture->y);
+	// 	for_each_lt(y, out_texture->y) {
+	// 		for_each_lt(x, out_texture->x) {
+	// 			float zoom = 200;
+	// 			float r = stb_perlin_ridge_noise3(cast(float, x)/zoom, cast(float, y)/zoom, game_state->total_time/16,
+	// 				2, .5, 1, 5,
+	// 				0, 0, 0
+	// 			);
+	// 			r = r < .14;
+	// 			auto pixel = &out_texture->buffer[x + cast(int32, out_texture->x)*y];
+	// 			*pixel = gb_vec4(r, r, r, 1);
+	// 		}
+	// 	}
+	//
+	// 	push_rect(&output->vbuffer, gb_rect2(GBORIGIN, input->screen), COLOR_PURPLE_TRANS, gb_rect2(GBORIGIN, GBDIAG));
+	// }
+	for_each_lt(tilemap_y, WORLD_DIM) {
+		for_each_lt(tilemap_x, WORLD_DIM) {
+			auto tilemap = &game_state->world[WORLD_DIM*tilemap_y + tilemap_x];
+			for_each_lt(tile_y, TILEMAP_DIM) {
+				for_each_lt(tile_x, TILEMAP_DIM) {
+					auto tile = &tilemap->tiles[TILEMAP_DIM*tile_y + tile_x];
+					gbVec2 abs_pos = gb_vec2(TILEMAP_DIM*tilemap_x + tile_x, TILEMAP_DIM*tilemap_y + tile_y);
+
+					float zoom = 32;
+					float r = stb_perlin_ridge_noise3(abs_pos.x/zoom, abs_pos.y/zoom, 0,
+						2, .5, 1, 5,
+						0, 0, 0
+					);
+					if(r < .3) {
+						*tile = 2;
 					}
-					user->text_cursor_pos -= 1;
-					user->cmd_text_size -= 1;
 				}
-			} else if(ch == CHAR_DELETE) {
-				if(user->text_cursor_pos < user->cmd_text_size) {
-					for_each_in_range(j, user->text_cursor_pos, user->cmd_text_size - 1) {
-						text_buffer[j] = text_buffer[j + 1];
-					}
-					user->cmd_text_size -= 1;
-				}
-			} else if(ch == CHAR_RETURN) {
-				user->text_cursor_pos = 0;
-				user->cmd_text_size = 0;
-			} else {
-				for(int j = user->cmd_text_size - 1; j >= user->text_cursor_pos; j -= 1) {
-					text_buffer[j + 1] = text_buffer[j];
-				}
-				text_buffer[user->text_cursor_pos] = ch;
-				user->text_cursor_pos += 1;
-				user->cmd_text_size += 1;
 			}
+			auto tile = &tilemap->tiles[TILEMAP_DIM*tilemap_y + tilemap_x];
+			*tile = 1;
+			tile = &tilemap->tiles[0];
+			*tile = 1;
+			// for_each_lt(tile_x, TILEMAP_DIM) {
+			// 	auto tile = &tilemap->tiles[TILEMAP_DIM*0 + tile_x];
+			// 	*tile = 0;
+			// }
+			// for_each_lt(tile_y, TILEMAP_DIM) {
+			// 	auto tile = &tilemap->tiles[TILEMAP_DIM*tile_y + 0];
+			// 	*tile = 0;
+			// }
 		}
 	}
-	*/
-	update_platform(game, platform, trans_stack, dt, input, output);
+
+	return;
 }
